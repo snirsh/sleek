@@ -1,0 +1,47 @@
+{
+  "name": "sleek",
+  "version": "0.1.0",
+  "description": "A local PR code reviewer.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "author": "Snir Sharristh <snirsh@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/snirsh/sleek.git"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "sleek": "./scripts/sleek.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.104.2",
+    "better-sqlite3": "^12.11.1",
+    "ollama": "^0.6.3",
+    "simple-git": "^3.36.0",
+    "tree-sitter-wasms": "^0.1.13",
+    "tsx": "^4.19.2",
+    "web-tree-sitter": "~0.25.10",
+    "zod": "^3.23.8",
+    "zod-to-json-schema": "^3.23.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true,
+    "esbuild@0.28.1": true,
+    "esbuild@0.21.5": true
+  }
+}
