@@ -2870,6 +2870,24 @@ export const CLIENT_JS = `(() => {
         concern.className = "concern";
         concern.textContent = c.concern;
         hd.append(chip, concern);
+        // Adopt: copy this finding into a reply you can edit and post under your
+        // name (findings are local-only and never post themselves).
+        if (live) {
+          const adopt = document.createElement("button");
+          adopt.className = "vistoggle tcadopt";
+          adopt.textContent = "Adopt as my comment";
+          adopt.title = "Copy this finding into a reply you can edit and post under your name";
+          adopt.addEventListener("click", () => {
+            const card = d.closest(".thread");
+            const ta = card && card.querySelector(".teditor textarea");
+            if (!ta) return;
+            card.classList.add("editing");
+            ta.value = c.body;
+            ta.focus();
+            ta.setSelectionRange(ta.value.length, ta.value.length);
+          });
+          hd.append(adopt);
+        }
       } else {
         const who = document.createElement("span");
         who.className = "tauthor";
@@ -2906,6 +2924,20 @@ export const CLIENT_JS = `(() => {
           pa.dataset.cid = c.id;
           pa.dataset.vis = "publishable";
           hd.append(pa);
+        }
+        // Edit / Delete: only your own still-pending (unsubmitted) drafts.
+        if (c.author.type === "reviewer" && c.pending && live) {
+          const edit = document.createElement("button");
+          edit.className = "vistoggle tcedit";
+          edit.textContent = "Edit";
+          edit.title = "Edit this draft comment";
+          edit.addEventListener("click", () => startInlineEdit(d, body, tid, c));
+          const del = document.createElement("button");
+          del.className = "vistoggle tcdel";
+          del.textContent = "Delete";
+          del.title = "Delete this draft comment";
+          del.addEventListener("click", () => startInlineDelete(d, body, tid, c.id));
+          hd.append(edit, del);
         }
       }
       if (opening) {
@@ -3035,6 +3067,98 @@ export const CLIENT_JS = `(() => {
         err.textContent = "network error";
         err.hidden = false;
       } finally { btn.disabled = false; }
+    }
+
+    // ── Edit a pending draft in place: PATCH /api/threads/:tid/comments/:cid ──
+    function startInlineEdit(commentDiv, bodyEl, tid, c) {
+      if (commentDiv.querySelector(".tcedit-form")) return;
+      const form = document.createElement("div");
+      form.className = "teditor tcedit-form";
+      const ta = document.createElement("textarea");
+      ta.value = c.body;
+      const acts = document.createElement("div");
+      acts.className = "tacts";
+      const save = document.createElement("button");
+      save.className = "askbtn";
+      save.textContent = "Save";
+      const cancel = document.createElement("button");
+      cancel.className = "tbtn";
+      cancel.textContent = "Cancel";
+      const err = document.createElement("p");
+      err.className = "terr";
+      err.hidden = true;
+      acts.append(save, cancel);
+      form.append(ta, acts, err);
+      bodyEl.hidden = true;
+      commentDiv.append(form);
+      ta.focus();
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+      const done = () => { form.remove(); bodyEl.hidden = false; };
+      cancel.addEventListener("click", done);
+      const doSave = async () => {
+        const text = ta.value.trim();
+        if (!text) { ta.focus(); return; }
+        save.disabled = true;
+        err.hidden = true;
+        try {
+          const res = await fetch("/api/threads/" + tid + "/comments/" + c.id, {
+            method: "PATCH", headers: jsonHeaders, body: JSON.stringify({ body: text }),
+          });
+          if (!res.ok) { err.textContent = await errText(res); err.hidden = false; save.disabled = false; return; }
+          await refetchThreads();
+        } catch (_) {
+          err.textContent = "network error";
+          err.hidden = false;
+          save.disabled = false;
+        }
+      };
+      save.addEventListener("click", doSave);
+      ta.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); doSave(); }
+        else if (e.key === "Escape") { e.stopPropagation(); done(); }
+      });
+    }
+
+    // ── Delete a pending draft: inline confirm (no window.confirm), then
+    // DELETE /api/threads/:tid/comments/:cid ──
+    function startInlineDelete(commentDiv, bodyEl, tid, cid) {
+      if (commentDiv.querySelector(".tcdel-form")) return;
+      const form = document.createElement("div");
+      form.className = "teditor tcdel-form";
+      const msg = document.createElement("p");
+      msg.className = "thint";
+      msg.textContent = "Delete this draft comment? This cannot be undone.";
+      const acts = document.createElement("div");
+      acts.className = "tacts";
+      const go = document.createElement("button");
+      go.className = "askbtn";
+      go.textContent = "Delete";
+      const cancel = document.createElement("button");
+      cancel.className = "tbtn";
+      cancel.textContent = "Cancel";
+      const err = document.createElement("p");
+      err.className = "terr";
+      err.hidden = true;
+      acts.append(go, cancel);
+      form.append(msg, acts, err);
+      bodyEl.hidden = true;
+      commentDiv.append(form);
+      go.focus();
+      const done = () => { form.remove(); bodyEl.hidden = false; };
+      cancel.addEventListener("click", done);
+      go.addEventListener("click", async () => {
+        go.disabled = true;
+        err.hidden = true;
+        try {
+          const res = await fetch("/api/threads/" + tid + "/comments/" + cid, { method: "DELETE" });
+          if (!res.ok) { err.textContent = await errText(res); err.hidden = false; go.disabled = false; return; }
+          await refetchThreads();
+        } catch (_) {
+          err.textContent = "network error";
+          err.hidden = false;
+          go.disabled = false;
+        }
+      });
     }
 
     // ── Ask the Assistant in-thread: post the question as a (pending) Comment,

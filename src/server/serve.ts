@@ -1282,6 +1282,65 @@ async function handleThreadRoutes(
     return;
   }
 
+  // Edit (PATCH) or remove (DELETE) a single Comment. Scoped to pending,
+  // reviewer-authored drafts: finding/assistant comments and already-submitted
+  // comments are immutable.
+  const editMatch =
+    /^(PATCH|DELETE) \/api\/threads\/([^/]+)\/comments\/([^/]+)$/.exec(route);
+  if (editMatch) {
+    const method = editMatch[1]!;
+    const threadId = decodeURIComponent(editMatch[2]!);
+    const commentId = decodeURIComponent(editMatch[3]!);
+
+    const thread = store.getThread(pr, sha, threadId);
+    const comment = thread?.comments.find((c) => c.id === commentId);
+    if (!thread || !comment) {
+      sendJson(res, 404, { error: "no such thread/comment" });
+      return;
+    }
+    if (comment.author.type !== "reviewer") {
+      sendJson(res, 422, { error: "only reviewer comments" });
+      return;
+    }
+    if (!comment.pending) {
+      sendJson(res, 422, {
+        error: "only pending (unsubmitted) comments can be edited or removed",
+      });
+      return;
+    }
+
+    if (method === "PATCH") {
+      let body: { body?: unknown };
+      try {
+        body = JSON.parse(await readBody(req)) as typeof body;
+      } catch (err) {
+        if (err instanceof BodyTooLargeError) throw err;
+        sendJson(res, 400, { error: "invalid JSON body" });
+        return;
+      }
+      if (typeof body.body !== "string" || body.body.trim() === "") {
+        sendJson(res, 400, { error: "`body` (string) is required" });
+        return;
+      }
+      const updated = store.editComment(pr, sha, threadId, commentId, body.body);
+      if (!updated) {
+        sendJson(res, 404, { error: "no such thread/comment" });
+        return;
+      }
+      sendJson(res, 200, { ok: true, comment: updated });
+      return;
+    }
+
+    // DELETE
+    const result = store.deleteComment(pr, sha, threadId, commentId);
+    if (!result.deleted) {
+      sendJson(res, 404, { error: "no such thread/comment" });
+      return;
+    }
+    sendJson(res, 200, { ok: true, threadDeleted: result.threadDeleted });
+    return;
+  }
+
   // /api/threads/:id/<action>
   const match = /^(GET|POST) \/api\/threads\/([^/]+)\/(comments|resolve|unresolve|ask)$/.exec(
     route,
@@ -2209,7 +2268,7 @@ export async function startServer(
       if (route === "POST /api/scaffold/cancel") {
         // Idempotent: ok even when nothing is running. A running job's abort
         // signal fires; the driver observes it and appends the `cancelled`
-        // terminal event (killing the worker process group in demo-data.ts).
+        // terminal event (killing the worker process group in src/review/pipeline.ts).
         currentJob?.cancel();
         sendJson(res, 200, { ok: true });
         return;

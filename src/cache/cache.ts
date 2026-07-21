@@ -210,7 +210,7 @@ export function openCache(
 
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
-  // Wave 9B: the scaffold worker (scripts/scaffold-worker.ts) opens its OWN
+  // Wave 9B: the scaffold worker (src/review/scaffoldWorker.ts) opens its OWN
   // connection to this same cache.db while the parent server may also touch it.
   // WAL lets a reader and a writer coexist, but two writers still serialize; a
   // busy_timeout makes the loser wait-and-retry instead of throwing

@@ -625,6 +625,86 @@ describe("comment visibility", () => {
   });
 });
 
+describe("edit + delete comments", () => {
+  const SHA = "shaEDITEDITEDITEDITEDITEDITEDITEDITEDITE";
+  const anchor = {
+    file: "src/a.ts",
+    side: "RIGHT" as const,
+    startLine: 3,
+    endLine: 3,
+  };
+
+  it("editComment replaces the body and returns null for a missing comment", () => {
+    const store = freshStore();
+    const thread = store.createThread(1, SHA, anchor, {
+      author: { type: "reviewer" },
+      body: "original",
+      pending: true,
+    });
+    const commentId = thread.comments[0]!.id;
+
+    const updated = store.editComment(1, SHA, thread.id, commentId, "rewritten");
+    expect(updated).toMatchObject({ id: commentId, body: "rewritten" });
+    expect(store.getThread(1, SHA, thread.id)!.comments[0]!.body).toBe(
+      "rewritten",
+    );
+    expect(
+      store.editComment(1, SHA, thread.id, "missing", "x"),
+    ).toBeNull();
+    store.close();
+  });
+
+  it("deleteComment removes a reply but keeps the thread when others remain", () => {
+    const store = freshStore();
+    const thread = store.createThread(1, SHA, anchor, {
+      author: { type: "reviewer" },
+      body: "first",
+      pending: true,
+    });
+    const reply = store.addComment(1, SHA, thread.id, {
+      author: { type: "reviewer" },
+      body: "second",
+      pending: true,
+    });
+
+    const result = store.deleteComment(1, SHA, thread.id, reply.id);
+    expect(result).toEqual({ deleted: true, threadDeleted: false });
+    const remaining = store.getThread(1, SHA, thread.id);
+    expect(remaining!.comments.map((c) => c.id)).toEqual([
+      thread.comments[0]!.id,
+    ]);
+    store.close();
+  });
+
+  it("deleteComment removes the thread when its last comment is deleted", () => {
+    const store = freshStore();
+    const thread = store.createThread(1, SHA, anchor, {
+      author: { type: "reviewer" },
+      body: "only comment",
+      pending: true,
+    });
+
+    const result = store.deleteComment(1, SHA, thread.id, thread.comments[0]!.id);
+    expect(result).toEqual({ deleted: true, threadDeleted: true });
+    expect(store.getThread(1, SHA, thread.id)).toBeNull();
+    store.close();
+  });
+
+  it("deleteComment reports deleted=false for a missing comment", () => {
+    const store = freshStore();
+    const thread = store.createThread(1, SHA, anchor, {
+      author: { type: "reviewer" },
+      body: "c",
+      pending: true,
+    });
+    expect(store.deleteComment(1, SHA, thread.id, "missing")).toEqual({
+      deleted: false,
+      threadDeleted: false,
+    });
+    store.close();
+  });
+});
+
 describe("learnings (deferred placeholder)", () => {
   it("adds and lists learnings newest-first", () => {
     const store = freshStore();

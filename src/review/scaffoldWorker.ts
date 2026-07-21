@@ -1,6 +1,6 @@
 /**
  * Scaffold worker (Wave 9B) — the child process that runs a single scaffold to
- * completion, isolated from the server. Forked by scripts/demo-data.ts'
+ * completion, isolated from the server. Forked by src/review/pipeline.ts'
  * buildScaffoldingClosure with `child_process.fork(workerPath, [configPath])`
  * (execArgv is inherited, so tsx transpiles this .ts child — verified
  * empirically). Isolating the run in a child means a crash rejects the parent's
@@ -23,17 +23,17 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { openCache } from "../src/cache/cache.ts";
-import { buildContextCached } from "../src/cache/context.ts";
-import { parseChangedRegions } from "../src/context/diff.ts";
-import { withWorktree } from "../src/context/worktree.ts";
-import type { ContextInput, RegionContext } from "../src/context/index.ts";
-import type { ChangeSet, ReviewScaffold } from "../src/domain/scaffold.ts";
-import { ingestPr } from "../src/ingest/ingest.ts";
-import { scaffold } from "../src/scaffolder/scaffolder.ts";
-import { createCliScaffolderRunner } from "../src/scaffolder/runners.ts";
-import type { ScaffoldProgressEvent } from "../src/server/serve.ts";
-import { buildReplayRunner, makeProgressHandler, type InternalRunChoice } from "./demo-data.ts";
+import { openCache } from "../cache/cache.ts";
+import { buildContextCached } from "../cache/context.ts";
+import { parseChangedRegions } from "../context/diff.ts";
+import { withWorktree } from "../context/worktree.ts";
+import type { ContextInput, RegionContext } from "../context/index.ts";
+import type { ChangeSet, ReviewScaffold } from "../domain/scaffold.ts";
+import { ingestPr } from "../ingest/ingest.ts";
+import { scaffold } from "../scaffolder/scaffolder.ts";
+import { createCliScaffolderRunner } from "../scaffolder/runners.ts";
+import type { ScaffoldProgressEvent } from "../server/serve.ts";
+import { buildReplayRunner, makeProgressHandler, type InternalRunChoice } from "./pipeline.ts";
 
 /** JSON config the parent writes to a temp file and passes as argv[2]. */
 export interface WorkerConfig {

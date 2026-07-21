@@ -28,13 +28,12 @@ import { printProgress, createProgressTimeline } from "../progress.ts";
 import { friendlyIngestError, friendlyMissingReviewError, formatFriendlyError } from "../errors.ts";
 import { applyFinishCleanup, finishCleanupPlan } from "../finishCleanup.ts";
 import { registerServer, unregisterServer } from "../registry.ts";
-// Scripts are outside tsconfig include, but tsx resolves them at runtime.
-// We use dynamic import to avoid "type module" complications with tsconfig.
-import type { DemoScaffoldOptions, DemoScaffoldResult } from "../../../scripts/demo-data.ts";
+import type { DemoScaffoldOptions, DemoScaffoldResult } from "../../domain/demoScaffold.ts";
 
-// Dynamically import from scripts/ at runtime (tsx resolves it; tsconfig excludes scripts/).
+// Loaded lazily so the review pipeline (which forks a worker) is only pulled in
+// when a review actually runs.
 async function importDemoData() {
-  const mod = await import("../../../scripts/demo-data.ts") as {
+  const mod = await import("../../review/pipeline.ts") as {
     buildDemoScaffold: (repo: string, pr: number, opts: DemoScaffoldOptions) => Promise<DemoScaffoldResult>;
     githubRepoUrl: (path: string) => Promise<string | undefined>;
     renderDemoHtmlCached: (cache: ReturnType<typeof openCache>, result: DemoScaffoldResult, timeline?: ReturnType<typeof createProgressTimeline>) => string;
@@ -68,7 +67,7 @@ export function writeJsonOutput(output: unknown): void {
 export async function runReview(opts: ReviewOptions): Promise<void> {
   const { pr, repo, port: requestedPort, open: shouldOpen, json: jsonMode, refresh, process: eagerProcess } = opts;
 
-  // The demo pipeline (scripts/demo-data.ts) logs its progress via console.log.
+  // The review pipeline (src/review/pipeline.ts) logs its progress via console.log.
   // Route ALL console.log output to stderr for this process: stdout must stay
   // clean for --json, and progress uniformly lives on stderr in human mode too.
   // (scripts/serve-demo.ts is untouched — this only affects the sleek CLI.)

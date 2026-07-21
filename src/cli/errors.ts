@@ -96,7 +96,7 @@ export function friendlyMissingReviewError(
       `Author one in scripts/reviews/${prNumber}.json:\n` +
       `  1. Print the regions to tile:\n` +
       `       npx tsx scripts/dump-regions.ts ${repoPath} ${prNumber}\n` +
-      `  2. Write scripts/reviews/${prNumber}.json (see format in scripts/demo-data.ts).\n` +
+      `  2. Write scripts/reviews/${prNumber}.json (see format in src/review/pipeline.ts).\n` +
       `\n` +
       `Or use a live scaffolder (no authored review needed):\n` +
       `  SLEEK_SCAFFOLDER_PROVIDER=claude (or codex) sleek review ${prNumber} --repo ${repoPath}\n` +

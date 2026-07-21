@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ChangeSet, ReviewScaffold } from "../src/domain/scaffold.ts";
-import { runWorker } from "./demo-data.ts";
+import { runWorker } from "../src/review/pipeline.ts";
 
 vi.mock("node:child_process", () => ({
   fork: vi.fn(),

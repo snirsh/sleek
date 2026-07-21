@@ -371,6 +371,33 @@ export interface Store {
     visibility: NonNullable<Comment["visibility"]>,
   ): Comment | null;
 
+  /**
+   * Replace a Comment's body. Returns the updated Comment, or null when the
+   * scoped thread/comment key does not exist. Author/pending policy (only
+   * pending reviewer drafts are editable) lives in the server layer.
+   */
+  editComment(
+    prNumber: number,
+    headSha: string,
+    threadId: string,
+    commentId: string,
+    body: string,
+  ): Comment | null;
+
+  /**
+   * Delete a Comment. When it was the last Comment in its Thread, the Thread is
+   * deleted too (so a reviewer-created thread vanishes with its only draft,
+   * while a finding thread survives — its finding Comment remains). Returns
+   * whether a row was deleted and whether the Thread was removed. Author/pending
+   * policy lives in the server layer.
+   */
+  deleteComment(
+    prNumber: number,
+    headSha: string,
+    threadId: string,
+    commentId: string,
+  ): { deleted: boolean; threadDeleted: boolean };
+
   /** All pending Comments across the (pr, headSha) threads, insertion order. */
   pendingComments(prNumber: number, headSha: string): Comment[];
 
@@ -708,6 +735,25 @@ export function openStore(dbPath: string): Store {
      WHERE pr_number = ? AND head_sha = ? AND thread_id = ? AND id = ?`,
   );
 
+  const updateCommentBody = db.prepare<[string, number, string, string, string]>(
+    `UPDATE comments SET body = ?
+     WHERE pr_number = ? AND head_sha = ? AND thread_id = ? AND id = ?`,
+  );
+
+  const deleteCommentStmt = db.prepare<[number, string, string, string]>(
+    `DELETE FROM comments
+     WHERE pr_number = ? AND head_sha = ? AND thread_id = ? AND id = ?`,
+  );
+
+  const countCommentsForThread = db.prepare<[number, string, string]>(
+    `SELECT COUNT(*) AS n FROM comments
+     WHERE pr_number = ? AND head_sha = ? AND thread_id = ?`,
+  );
+
+  const deleteThreadStmt = db.prepare<[number, string, string]>(
+    `DELETE FROM threads WHERE pr_number = ? AND head_sha = ? AND id = ?`,
+  );
+
   const drainPendingComments = db.prepare<[number, string]>(
     `UPDATE comments SET pending = 0
      WHERE pr_number = ? AND head_sha = ? AND pending = 1`,
@@ -1029,6 +1075,49 @@ export function openStore(dbPath: string): Store {
         commentId,
       ) as CommentRow | undefined;
       return row ? commentFromRow(row) : null;
+    },
+
+    editComment(prNumber, headSha, threadId, commentId, body) {
+      const info = updateCommentBody.run(
+        body,
+        prNumber,
+        headSha,
+        threadId,
+        commentId,
+      );
+      if (info.changes === 0) return null;
+      const row = selectCommentByKey.get(
+        prNumber,
+        headSha,
+        threadId,
+        commentId,
+      ) as CommentRow | undefined;
+      return row ? commentFromRow(row) : null;
+    },
+
+    deleteComment(prNumber, headSha, threadId, commentId) {
+      const remove = db.transaction(
+        (): { deleted: boolean; threadDeleted: boolean } => {
+          const info = deleteCommentStmt.run(
+            prNumber,
+            headSha,
+            threadId,
+            commentId,
+          );
+          if (info.changes === 0) return { deleted: false, threadDeleted: false };
+          const { n } = countCommentsForThread.get(
+            prNumber,
+            headSha,
+            threadId,
+          ) as { n: number };
+          if (n === 0) {
+            deleteThreadStmt.run(prNumber, headSha, threadId);
+            return { deleted: true, threadDeleted: true };
+          }
+          return { deleted: true, threadDeleted: false };
+        },
+      );
+      return remove();
     },
 
     pendingComments(prNumber, headSha) {

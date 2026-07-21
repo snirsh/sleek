@@ -44,7 +44,7 @@ import {
   githubRepoUrl,
   renderDemoHtmlCached,
   GITHUB_REPO_URL,
-} from "./demo-data.ts";
+} from "../src/review/pipeline.ts";
 
 const [repoPath, prArg, portArg] = process.argv.slice(2);
 if (!repoPath || !prArg) {

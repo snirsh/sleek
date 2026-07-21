@@ -24,28 +24,29 @@ import {
   htmlKey,
   rendererVersionHash,
   type SleekCache,
-} from "../src/cache/cache.ts";
-import { parseChangedRegions } from "../src/context/diff.ts";
-import type { ScaffoldProgressEvent } from "../src/server/serve.ts";
-import type { StartServerOptions } from "../src/server/serve.ts";
-import type { ContextInput, RegionContext } from "../src/context/index.ts";
+} from "../cache/cache.ts";
+import { parseChangedRegions } from "../context/diff.ts";
+import type { ScaffoldProgressEvent } from "../server/serve.ts";
+import type { StartServerOptions } from "../server/serve.ts";
+import type { ContextInput, RegionContext } from "../context/index.ts";
 import type {
   Anchor,
   Concern,
   HistoryEntry,
   Neighbor,
+  Layer,
   ReviewScaffold,
   Severity,
-} from "../src/domain/scaffold.ts";
-import type { ChangeSet } from "../src/domain/scaffold.ts";
-import { ingestPr, type GhRunner } from "../src/ingest/ingest.ts";
-import type { Timeline } from "../src/perf/timing.ts";
-import type { LlmRunner, LlmUsage } from "../src/scaffolder/llm.ts";
-import { scaffold, type ScaffoldProgressEvent as ScaffolderProgressEvent } from "../src/scaffolder/scaffolder.ts";
-import { scaffolderProviderInfo } from "../src/scaffolder/runners.ts";
-import type { Store } from "../src/store/index.ts";
-import { renderReviewHtml } from "./render.ts";
-import type { WorkerConfig, WorkerMessage } from "./scaffold-worker.ts";
+} from "../domain/scaffold.ts";
+import type { ChangeSet } from "../domain/scaffold.ts";
+import { ingestPr, type GhRunner } from "../ingest/ingest.ts";
+import type { Timeline } from "../perf/timing.ts";
+import type { LlmRunner, LlmUsage } from "../scaffolder/llm.ts";
+import { scaffold, type ScaffoldProgressEvent as ScaffolderProgressEvent } from "../scaffolder/scaffolder.ts";
+import { scaffolderProviderInfo } from "../scaffolder/runners.ts";
+import type { Store } from "../store/index.ts";
+import { renderReviewHtml } from "../render/html.ts";
+import type { WorkerConfig, WorkerMessage } from "./scaffoldWorker.ts";
 
 // Fallback for when the repo URL can't be derived from `origin` (see githubRepoUrl);
 // used only to build the header links (renderReviewHtml itself stays generic — it just
@@ -246,26 +247,8 @@ function toRegionIndexes(
   }));
 }
 
-export interface DemoScaffoldResult {
-  changeSet: ChangeSet;
-  reviewScaffold: ReviewScaffold;
-  layerTitles: Record<string, string>;
-  prUrl: string;
-}
-
-/** Wave-5 pipeline options; all optional so bare calls behave as before. */
-export interface DemoScaffoldOptions {
-  /** Injectable gh runner (e.g. the caching runner from src/cache/gh.ts). */
-  gh?: GhRunner;
-  /**
-   * Fast-path scaffold replay: when given, a scaffold already stored for this exact
-   * (pr, headSha) is used instead of rebuilding (the injected-runner build is
-   * deterministic per head SHA), and a rebuilt one is saved back via saveScaffold.
-   */
-  store?: Store;
-  /** Per-stage timing (region parse / history / neighbors / scaffold rows). */
-  timeline?: Timeline;
-}
+import type { DemoScaffoldResult, DemoScaffoldOptions } from "../domain/demoScaffold.ts";
+export type { DemoScaffoldResult, DemoScaffoldOptions } from "../domain/demoScaffold.ts";
 
 /** Header link derived from the repo's own origin remote, with the warned fallback. */
 export async function demoPrUrl(repoPath: string, prNumber: number): Promise<string> {
@@ -311,7 +294,7 @@ export async function buildDemoScaffold(
         `  1. print the REAL changed regions the skeleton must tile:`,
         `       npx tsx scripts/dump-regions.ts ${repoPath} ${prNumber}`,
         `  2. write scripts/reviews/${prNumber}.json in the format documented above`,
-        `     loadAuthoredReviewJson() in scripts/demo-data.ts.`,
+        `     loadAuthoredReviewJson() in src/review/pipeline.ts.`,
       ].join("\n"),
     );
   }
@@ -330,7 +313,7 @@ export async function buildDemoScaffold(
     console.log(
       `▶ Scaffold replayed from store (${changeSet.pr.headSha.slice(0, 12)}): ` +
         `${stored.layers.length} layers, ` +
-        `${stored.layers.reduce((n, l) => n + l.findings.length, 0)} findings`,
+        `${stored.layers.reduce((n: number, l: Layer) => n + l.findings.length, 0)} findings`,
     );
     const prUrl = await demoPrUrl(repoPath, prNumber);
     return { changeSet, reviewScaffold: stored, layerTitles, prUrl };
@@ -545,8 +528,8 @@ export function makeProgressHandler(
  * rather than threaded through options.
  */
 const WORKER_CACHE_DB = ".sleek/cache.db";
-/** Resolve scripts/scaffold-worker.ts next to this file. */
-const WORKER_PATH = join(dirname(fileURLToPath(import.meta.url)), "scaffold-worker.ts");
+/** Resolve src/review/scaffoldWorker.ts next to this file. */
+const WORKER_PATH = join(dirname(fileURLToPath(import.meta.url)), "scaffoldWorker.ts");
 /** Keep the tail of the worker's stderr for a postmortem in the rejection message. */
 const STDERR_RING_LINES = 40;
 /** Grace period after SIGTERM before escalating to SIGKILL on cancel. */
@@ -577,7 +560,7 @@ function unlinkBestEffort(path: string | undefined): void {
 }
 
 /**
- * Fork scripts/scaffold-worker.ts, relay its IPC progress events to onEvent, and
+ * Fork src/review/scaffoldWorker.ts, relay its IPC progress events to onEvent, and
  * resolve with the returned {changeSet, scaffold, layerTitles}. Rejects (with the
  * last stderr lines) when the worker exits non-zero without a result.
  *
@@ -738,7 +721,7 @@ export function buildScaffoldingClosure(
 
   const providerInfo = scaffolderProviderInfo(process.env);
 
-  // Wave 9B: the scaffold run lives in a forked child (scripts/scaffold-worker.ts)
+  // Wave 9B: the scaffold run lives in a forked child (src/review/scaffoldWorker.ts)
   // so a crash rejects run() cleanly and the server survives. This closure
   // relays the child's IPC progress events to onEvent and renders the HTML in
   // the parent from the returned changeSet/scaffold/layerTitles.
@@ -843,7 +826,7 @@ export function buildReplayRunner(
   if (!authoredJson) {
     throw new Error(
       `No authored review for PR #${prNumber}: scripts/reviews/${prNumber}.json does not exist ` +
-        `(see the format documented in scripts/demo-data.ts).`,
+        `(see the format documented in src/review/pipeline.ts).`,
     );
   }
   const layerTitles = Object.fromEntries(authoredJson.layers.map((l) => [l.id, l.title]));

@@ -1,10 +1,19 @@
 {
-  "name": "sleek",
+  "name": "@snirsh/sleek",
   "version": "0.1.0",
   "description": "A local PR code reviewer.",
   "type": "module",
-  "private": true,
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "src/**/*.ts",
+    "!src/**/*.test.ts",
+    "scripts/sleek.ts",
+    "README.md",
+    "LICENSE"
+  ],
   "author": "Snir Sharristh <snirsh@gmail.com>",
   "repository": {
     "type": "git",

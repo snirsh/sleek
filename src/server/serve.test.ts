@@ -594,6 +594,116 @@ describe("startServer", () => {
     });
   });
 
+  describe("thread comment edit + delete routes", () => {
+    async function postJson(base: string, path: string, body: unknown): Promise<Response> {
+      return fetch(`${base}${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    }
+    async function sendJson(base: string, method: string, path: string, body?: unknown): Promise<Response> {
+      return fetch(`${base}${path}`, {
+        method,
+        headers: { "content-type": "application/json" },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      });
+    }
+    async function createThread(base: string) {
+      const res = await postJson(base, "/api/threads", {
+        anchor: { file: "src/util.ts", side: "RIGHT", startLine: 12, endLine: 12 },
+        body: "opening comment",
+      });
+      expect(res.status).toBe(201);
+      return (await res.json()) as { id: string; comments: { id: string }[] };
+    }
+
+    it("PATCH edits a pending reviewer comment and validates body", async () => {
+      const store = openStore(":memory:");
+      const base = await start({ store });
+      const thread = await createThread(base);
+      const commentId = thread.comments[0]!.id;
+
+      const ok = await sendJson(base, "PATCH", `/api/threads/${thread.id}/comments/${commentId}`, {
+        body: "rewritten",
+      });
+      expect(ok.status).toBe(200);
+      expect(await ok.json()).toMatchObject({
+        ok: true,
+        comment: { id: commentId, body: "rewritten" },
+      });
+
+      const empty = await sendJson(base, "PATCH", `/api/threads/${thread.id}/comments/${commentId}`, {
+        body: "   ",
+      });
+      expect(empty.status).toBe(400);
+
+      const missing = await sendJson(base, "PATCH", `/api/threads/${thread.id}/comments/nope`, {
+        body: "x",
+      });
+      expect(missing.status).toBe(404);
+      store.close();
+    });
+
+    it("rejects editing non-reviewer and non-pending comments with 422", async () => {
+      const store = openStore(":memory:");
+      const base = await start({ store });
+      const thread = await createThread(base);
+
+      const assistant = store.addComment(scaffold.pr.number, scaffold.pr.headSha, thread.id, {
+        author: { type: "assistant", model: "fake-model:latest" },
+        body: "assistant reply",
+        pending: false,
+      });
+      const nonReviewer = await sendJson(base, "PATCH", `/api/threads/${thread.id}/comments/${assistant.id}`, {
+        body: "x",
+      });
+      expect(nonReviewer.status).toBe(422);
+      expect(await nonReviewer.json()).toEqual({ error: "only reviewer comments" });
+
+      const submitted = store.addComment(scaffold.pr.number, scaffold.pr.headSha, thread.id, {
+        author: { type: "reviewer" },
+        body: "already submitted",
+        pending: false,
+      });
+      const nonPending = await sendJson(base, "PATCH", `/api/threads/${thread.id}/comments/${submitted.id}`, {
+        body: "x",
+      });
+      expect(nonPending.status).toBe(422);
+      expect(await nonPending.json()).toEqual({
+        error: "only pending (unsubmitted) comments can be edited or removed",
+      });
+      store.close();
+    });
+
+    it("DELETE removes a reply and keeps the thread, then removes the thread with its last comment", async () => {
+      const store = openStore(":memory:");
+      const base = await start({ store });
+      const thread = await createThread(base);
+      const openingId = thread.comments[0]!.id;
+
+      const replyRes = await postJson(base, `/api/threads/${thread.id}/comments`, { body: "reply" });
+      const reply = (await replyRes.json()) as { id: string };
+
+      const delReply = await sendJson(base, "DELETE", `/api/threads/${thread.id}/comments/${reply.id}`);
+      expect(delReply.status).toBe(200);
+      expect(await delReply.json()).toEqual({ ok: true, threadDeleted: false });
+
+      const delLast = await sendJson(base, "DELETE", `/api/threads/${thread.id}/comments/${openingId}`);
+      expect(delLast.status).toBe(200);
+      expect(await delLast.json()).toEqual({ ok: true, threadDeleted: true });
+
+      const list = await (await fetch(`${base}/api/threads`)).json() as {
+        threads: { id: string }[];
+      };
+      expect(list.threads.find((t) => t.id === thread.id)).toBeUndefined();
+
+      const missing = await sendJson(base, "DELETE", `/api/threads/${thread.id}/comments/${openingId}`);
+      expect(missing.status).toBe(404);
+      store.close();
+    });
+  });
+
   describe("agent routes", () => {
     async function postJson(base: string, path: string, body: unknown): Promise<Response> {
       return fetch(`${base}${path}`, {

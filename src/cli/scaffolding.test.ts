@@ -3,8 +3,8 @@ import { afterEach, describe, it, expect, vi } from "vitest";
 /**
  * Pure decision-logic tests for Wave 7 explore-first startup.
  *
- * Note: hasAuthoredReview is in scripts/demo-data.ts (outside tsconfig).
- * These tests verify the pure logic without importing from scripts.
+ * Note: hasAuthoredReview lives in src/review/pipeline.ts.
+ * These tests verify the pure logic without importing the full pipeline.
  */
 
 describe("scaffolding availability logic", () => {
@@ -26,7 +26,7 @@ describe("scaffolding availability logic", () => {
 
 describe("demo HTML cache render mode", () => {
   afterEach(() => {
-    vi.doUnmock("../../scripts/render.ts");
+    vi.doUnmock("../render/html.ts");
     vi.resetModules();
     vi.restoreAllMocks();
   });
@@ -36,12 +36,12 @@ describe("demo HTML cache render mode", () => {
       (_scaffold, _diff, _titles, _prUrl, opts?: { lazyLargeFiles?: boolean }) =>
         opts?.lazyLargeFiles ? "lazy-html" : "full-html",
     );
-    vi.doMock("../../scripts/render.ts", () => ({
+    vi.doMock("../render/html.ts", () => ({
       parseUnifiedDiff: vi.fn(),
       renderReviewHtml,
     }));
 
-    const { renderDemoHtmlCached } = await import("../../scripts/demo-data.ts");
+    const { renderDemoHtmlCached } = await import("../review/pipeline.ts");
     const keys: string[] = [];
     const values = new Map<string, string>();
     const cache = {

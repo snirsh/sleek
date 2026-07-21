@@ -147,7 +147,7 @@ FLAGS
 sleek regions <pr> [flags]
 
 Dump the changed regions (anchors) for a PR. Useful for authoring
-scripts/reviews/<pr>.json (see scripts/demo-data.ts for the format).
+scripts/reviews/<pr>.json (see src/review/pipeline.ts for the format).
 
 FLAGS
   --repo <path>    Repo path (default: cwd)
